@@ -5,15 +5,19 @@ const {
   session,
   Scenes: { WizardScene, Stage },
 } = require("telegraf");
-const axios = require("axios");
+const { MongoClient } = require("mongodb");
 
+// Mongo
+const client = new MongoClient(process.env.MONGODB_URL);
+// Axios
+const axios = require("axios");
 // Telegraf
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
 // Session Initialize
-bot.context.db = {
-  userIdList: [],
-};
+// bot.context.db = {
+//   userIdList: [],
+// };
 
 // Keyboard
 const greetingMarkup = Markup.keyboard([
@@ -73,8 +77,8 @@ const userEmailRequest = `
 bot.use(session());
 
 // Start
-bot.start((ctx) => {
-  try {
+bot.start(async (ctx) => {
+  if (!ctx.session.user) {
     ctx.session.user = {
       userData: {
         userFirstName: ctx.chat.first_name || "FirstName",
@@ -88,18 +92,36 @@ bot.start((ctx) => {
       TRC20: null,
       contacts: [],
     };
-
-    axios.post("http://localhost/userList", {
-      data: ctx.session.user,
-    });
-
-    return ctx.replyWithHTML(
-      `👋 Welcome, dear ${ctx.from.first_name}!`,
-      greetingMarkup
-    );
-  } catch (e) {
-    console.log(e);
   }
+
+  axios.post("http://localhost/userList", {
+    data: ctx.session.user,
+  });
+
+  // MongoDb
+  await client.connect();
+  const usersList = await client.db().collection("userList");
+  const foundedUser = await usersList.findOne({
+    telegramChatID: ctx.chat.id,
+  });
+
+  if (!foundedUser) {
+    usersList.insertOne({
+      userFirstName: ctx.chat.first_name || "FirstName",
+      userLastName: ctx.chat.last_name || "LastName",
+      telegramChatID: ctx.chat.id,
+      telegramUserName: ctx.chat.username || "userName",
+      registrationDate: Date.now(),
+      binanceIdList: [],
+      TRC20: null,
+      contacts: [],
+    });
+  }
+
+  return ctx.replyWithHTML(
+    `👋 Welcome, dear ${ctx.from.first_name}!`,
+    greetingMarkup
+  );
 });
 
 // Stages
